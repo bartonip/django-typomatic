@@ -10,6 +10,30 @@ from django_typomatic import ts_interface, generate_ts
 from rest_framework.serializers import BaseSerializer
 
 
+def _get_serializers_for_module(module_name, serializer_name=None):
+    serializers = []
+    module = sys.modules.get(module_name, None)
+    possibly_serializers = filter(lambda name: not name.startswith('_'), dir(module))
+
+    for serializer_class_name in possibly_serializers:
+        serializer_class = getattr(module, serializer_class_name)
+
+        if not inspect.isclass(serializer_class):
+            continue
+
+        # Skip imported serializer classes
+        if module_name not in serializer_class.__module__:
+            continue
+
+        if serializer_name and serializer_class.__name__ != serializer_name:
+            continue
+
+        if issubclass(serializer_class, BaseSerializer):
+            serializers.append(serializer_class)
+
+    return serializers
+
+
 class Command(BaseCommand):
     help = 'Generate TS types from serializer'
 
@@ -25,7 +49,7 @@ class Command(BaseCommand):
             '--serializers',
             '-s',
             help='Serializers enumeration '
-                 'formats: module_name.SerializerName | module_name',
+                 'formats: module_name.SerializerName | module_name.serializers.submodule | module_name',
             nargs="*",
             type=str,
             default=[]
@@ -87,33 +111,15 @@ class Command(BaseCommand):
 
     @staticmethod
     def _get_app_serializers(app_name):
-        serializers = []
-        module = sys.modules.get(f'{app_name}.serializers', None)
-        possibly_serializers = filter(lambda name: not name.startswith('_'), dir(module))
+        return _get_serializers_for_module(f'{app_name}.serializers')
 
-        for serializer_class_name in possibly_serializers:
-            serializer_class = getattr(module, serializer_class_name)
+    @staticmethod
+    def _get_submodule_serializers(submodule):
+        return _get_serializers_for_module(submodule)
 
-            if not inspect.isclass(serializer_class):
-                continue
-
-            # Skip imported serializer classes
-            if app_name not in serializer_class.__module__:
-                continue
-
-            if issubclass(serializer_class, BaseSerializer):
-                serializers.append(f'{app_name}.{serializer_class.__name__}')
-
-        return serializers
-
-    def _generate_ts(self, app_name, serializer_name, output, **options):
-        module = sys.modules.get(f'{app_name}.serializers', None)
-
-        if not module:
-            self.stdout.write(f'In app #{app_name} not found serializers file, skip', self.style.WARNING)
-            return
-
-        serializer_class = getattr(module, serializer_name)
+    def _generate_ts(self, serializer_class, output, **options):
+        app_name = serializer_class.__module__.split(".")[0]
+    
         ts_interface(context=app_name)(serializer_class)
 
         output_path = Path(output) / app_name / 'index.ts'
@@ -144,18 +150,18 @@ class Command(BaseCommand):
 
         for serializer in serializers:
             user_input = serializer.split('.')
-
+            
             # Only app name
             if len(user_input) == 1:
                 app_name = user_input[0]
                 serializers_list = self._get_app_serializers(app_name)
-
-                for s in serializers_list:
-                    _, serializer_name = s.split('.')
-                    self._generate_ts(app_name, serializer_name, output, **options)
-            # App name with serializer e.g. user.UserSerializer
-            elif len(user_input) == 2:
+            else if len(user_input) == 2:
                 app_name, serializer_name = user_input
-                self._generate_ts(app_name, serializer_name, output, **options)
+                serializers_list = _get_serializers_for_module(app_name, serializer_name)
+            # Submodule
             else:
-                self.stdout.write(f'Wrong format ({serializer})', self.style.ERROR)
+                app_name, submodule = serializer.split('.', 1)
+                serializers_list = self._get_submodule_serializers(serializer)
+
+            for s in serializers_list:
+                    self._generate_ts(s, output, **options)

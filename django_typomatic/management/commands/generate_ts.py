@@ -119,7 +119,7 @@ class Command(BaseCommand):
 
     def _generate_ts(self, serializer_class, output, **options):
         app_name = serializer_class.__module__.split(".")[0]
-    
+
         ts_interface(context=app_name)(serializer_class)
 
         output_path = Path(output) / app_name / 'index.ts'
@@ -134,7 +134,7 @@ class Command(BaseCommand):
             trim_serializer_output=options['trim'],
             annotations=options['annotations']
         )
-        self.stdout.write(f'[+] {app_name}.{serializer_name}')
+        self.stdout.write(f'[+] {serializer_class.__module__}.{serializer_class.__name__}')
 
     def handle(self, *args, serializers, output, all, **options):
         if all and serializers:
@@ -150,12 +150,12 @@ class Command(BaseCommand):
 
         for serializer in serializers:
             user_input = serializer.split('.')
-            
+
             # Only app name
             if len(user_input) == 1:
                 app_name = user_input[0]
                 serializers_list = self._get_app_serializers(app_name)
-            else if len(user_input) == 2:
+            elif len(user_input) == 2:
                 app_name, serializer_name = user_input
                 serializers_list = _get_serializers_for_module(app_name, serializer_name)
             # Submodule

@@ -153,11 +153,10 @@ class Command(BaseCommand):
 
             # Only app name
             if len(user_input) == 1:
-                app_name = user_input[0]
-                serializers_list = self._get_app_serializers(app_name)
+                serializers_list = self._get_app_serializers(user_input)
             elif len(user_input) == 2:
                 app_name, serializer_name = user_input
-                serializers_list = _get_serializers_for_module(app_name, serializer_name)
+                serializers_list = _get_serializers_for_module(f"{app_name}.serializers", serializer_name)
             # Submodule
             else:
                 app_name, submodule = serializer.split('.', 1)
